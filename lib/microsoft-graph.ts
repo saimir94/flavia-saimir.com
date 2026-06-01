@@ -1,15 +1,6 @@
-// lib/microsoft-graph.ts
-
 const GRAPH_BASE_URL = 'https://graph.microsoft.com/v1.0';
 
-async function getAccessToken() {
-  const clientId = process.env.CLIENT_ID;
-  const refreshToken = process.env.REFRESH_TOKEN;
-
-  if (!clientId || !refreshToken) {
-    throw new Error('Missing CLIENT_ID or REFRESH_TOKEN env variables.');
-  }
-
+export async function getAccessToken(clientId: string, refreshToken: string) {
   const params = new URLSearchParams();
   params.append('client_id', clientId);
   params.append('scope', 'Files.ReadWrite offline_access');
@@ -24,27 +15,17 @@ async function getAccessToken() {
 
   const data = await res.json();
   if (!data.access_token) throw new Error('Failed to get access token: ' + JSON.stringify(data));
-
   return data.access_token;
 }
 
 export async function createOneDriveUploadSession({
   filename,
-  fileSize,
-  mimeType,
-}: {
-  filename: string;
-  fileSize: number;
-  mimeType: string;
-}) {
-  const accessToken = await getAccessToken();
+  clientId,
+  refreshToken
+}: { filename: string; clientId: string; refreshToken: string }) {
+  const accessToken = await getAccessToken(clientId, refreshToken);
 
-  const body = {
-    item: {
-      '@microsoft.graph.conflictBehavior': 'rename',
-      name: filename,
-    },
-  };
+  const body = { item: { '@microsoft.graph.conflictBehavior': 'rename', name: filename } };
 
   const res = await fetch(`${GRAPH_BASE_URL}/me/drive/root:/${filename}:/createUploadSession`, {
     method: 'POST',
@@ -58,8 +39,5 @@ export async function createOneDriveUploadSession({
   const data = await res.json();
   if (!data.uploadUrl) throw new Error('Upload session failed: ' + JSON.stringify(data));
 
-  return {
-    uploadUrl: data.uploadUrl,
-    expirationDateTime: data.expirationDateTime,
-  };
+  return { uploadUrl: data.uploadUrl, expirationDateTime: data.expirationDateTime };
 }
