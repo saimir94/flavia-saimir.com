@@ -1,4 +1,5 @@
-// route.ts
+import fetch from 'node-fetch';
+
 const GRAPH_BASE_URL = 'https://graph.microsoft.com/v1.0';
 
 async function getAccessToken() {
@@ -9,7 +10,6 @@ async function getAccessToken() {
     throw new Error('Missing CLIENT_ID or REFRESH_TOKEN env variables.');
   }
 
-  // Merr access token nga refresh token
   const params = new URLSearchParams();
   params.append('client_id', clientId);
   params.append('scope', 'Files.ReadWrite offline_access');
@@ -28,19 +28,15 @@ async function getAccessToken() {
   return data.access_token;
 }
 
-/**
- * Krijon OneDrive upload session për file të madh
- */
-export async function createOneDriveUploadSession({ filename, fileSize, mimeType }: { filename: string, fileSize: number, mimeType: string }) {
+// Funksioni brenda route.ts, por **jo i eksportuar si HTTP route**
+async function createOneDriveUploadSession({ filename, fileSize, mimeType }) {
   const accessToken = await getAccessToken();
-
   const body = {
     item: {
       '@microsoft.graph.conflictBehavior': 'rename',
       name: filename,
     }
   };
-
   const res = await fetch(`${GRAPH_BASE_URL}/me/drive/root:/${filename}:/createUploadSession`, {
     method: 'POST',
     headers: {
@@ -57,4 +53,21 @@ export async function createOneDriveUploadSession({ filename, fileSize, mimeType
     uploadUrl: data.uploadUrl,
     expirationDateTime: data.expirationDateTime,
   };
+}
+
+// Kjo është **POST handler i lejuar nga Next.js App Router**
+export async function POST(request: Request) {
+  try {
+    const { filename, fileSize, mimeType, passcode } = await request.json();
+
+    if (process.env.UPLOAD_PASSCODE && passcode !== process.env.UPLOAD_PASSCODE) {
+      return new Response(JSON.stringify({ error: 'The upload code is not correct.' }), { status: 401 });
+    }
+
+    const session = await createOneDriveUploadSession({ filename, fileSize, mimeType });
+    return new Response(JSON.stringify(session), { status: 200 });
+  } catch (error) {
+    console.error(error);
+    return new Response(JSON.stringify({ error: 'Upload session could not be created. Check the Microsoft configuration.' }), { status: 500 });
+  }
 }
